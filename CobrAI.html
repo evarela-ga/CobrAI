@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280" />
+<title>CobrAI — Cobranzas inteligentes por WhatsApp</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.0.6/dist/index.global.js"></script>
+<style type="text/tailwindcss">
+  @custom-variant dark (&:where(.dark, .dark *));
+  @theme {
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+    --color-ink-50: #f6f7f9;
+    --color-ink-100: #eceef2;
+    --color-ink-200: #d6dae3;
+    --color-ink-300: #aab1c0;
+    --color-ink-400: #7c8499;
+    --color-ink-500: #525a6f;
+    --color-ink-600: #3a4255;
+    --color-ink-700: #2a3142;
+    --color-ink-800: #1c2231;
+    --color-ink-900: #121724;
+    --color-ink-950: #0a0d16;
+
+    --color-brand-50: #ecfeff;
+    --color-brand-100: #cffafe;
+    --color-brand-200: #a5f3fc;
+    --color-brand-300: #67e8f9;
+    --color-brand-400: #22d3ee;
+    --color-brand-500: #06b6d4;
+    --color-brand-600: #0891b2;
+    --color-brand-700: #0e7490;
+    --color-brand-800: #155e75;
+    --color-brand-900: #164e63;
+
+    --color-violet2-400: #a78bfa;
+    --color-violet2-500: #8b5cf6;
+    --color-violet2-600: #7c3aed;
+
+    --color-coral-400: #fb7185;
+    --color-coral-500: #f43f5e;
+    --color-coral-600: #e11d48;
+
+    --shadow-card: 0 1px 0 0 rgba(255,255,255,0.04) inset, 0 1px 2px rgba(0,0,0,0.2), 0 8px 24px -12px rgba(0,0,0,0.4);
+    --shadow-glow: 0 0 0 1px rgba(6,182,212,0.4), 0 8px 32px -6px rgba(6,182,212,0.35);
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/lucide@0.453.0/dist/umd/lucide.min.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  html, body { font-family: 'Inter', system-ui, sans-serif; }
+  body { background: #0a0d16; color: #eceef2; }
+  body.light-mode { background: #f6f7f9; color: #121724; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(125,135,160,0.25); border-radius: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(125,135,160,0.4); }
+  .fade-in { animation: fadeIn 0.25s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .slide-in { animation: slideIn 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: translateX(0); } }
+  .pulse-dot { animation: pulseDot 1.6s ease-in-out infinite; }
+  @keyframes pulseDot { 0%,100% { opacity: 0.4; transform: scale(0.9);} 50% { opacity: 1; transform: scale(1.1);} }
+  .typing-dot { animation: typingDot 1.2s infinite; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin: 0 1px; }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingDot { 0%,80%,100% { opacity: 0.2; transform: translateY(0);} 40% { opacity: 1; transform: translateY(-3px);} }
+  .skeleton { background: linear-gradient(90deg, rgba(125,135,160,0.08) 25%, rgba(125,135,160,0.18) 50%, rgba(125,135,160,0.08) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  .lucide-icon { width: 16px; height: 16px; stroke-width: 2; }
+  [data-tooltip] { position: relative; }
+  .chip-anim { transition: all 0.18s ease; }
+  .chip-anim:hover { transform: translateY(-1px); }
+  .gauge-arc { transition: stroke-dashoffset 0.8s cubic-bezier(0.22,1,0.36,1); }
+  .ring-focus:focus-visible { outline: 2px solid #22d3ee; outline-offset: 2px; }
+  /* WhatsApp-style chat backdrop, but our own muted pattern */
+  .chat-bg-dark { background-color: #0e1320; background-image: radial-gradient(circle at 15% 25%, rgba(6,182,212,0.04) 0, transparent 40%), radial-gradient(circle at 85% 75%, rgba(139,92,246,0.04) 0, transparent 40%); }
+  .chat-bg-light { background-color: #ece5dd; background-image: radial-gradient(circle at 15% 25%, rgba(6,182,212,0.06) 0, transparent 40%); }
+  .bubble-in { background: #1c2231; }
+  .bubble-out { background: #054640; }
+  body.light-mode .bubble-in { background: #ffffff; color: #121724; box-shadow: 0 1px 1px rgba(0,0,0,0.06); }
+  body.light-mode .bubble-out { background: #d9fdd3; color: #121724; }
+  /* Light mode panel surfaces */
+  body.light-mode .panel { background: #ffffff; border-color: #e4e7ec; }
+  body.light-mode .panel-muted { background: #f6f7f9; border-color: #e4e7ec; }
+  body.light-mode .text-muted { color: #525a6f; }
+  body.light-mode .text-default { color: #121724; }
+  body.light-mode .subtle-border { border-color: #e4e7ec; }
+  body.light-mode .input { background: #ffffff; border-color: #d6dae3; color: #121724; }
+  body.light-mode .topbar-bg { background: rgba(255,255,255,0.85); border-color: #e4e7ec; }
+  body.light-mode .sidebar-bg { background: #ffffff; border-color: #e4e7ec; }
+  body.light-mode .nav-item-active { background: #ecfeff; color: #0e7490; }
+  body.light-mode .nav-item-idle:hover { background: #f1f5f9; }
+  body.light-mode .chat-bg { background-color: #ece5dd; }
+  /* Dark mode defaults (apply by default) */
+  .panel { background: #121724; border-color: rgba(255,255,255,0.06); }
+  .panel-muted { background: #0e1320; border-color: rgba(255,255,255,0.04); }
+  .text-muted { color: #7c8499; }
+  .text-default { color: #eceef2; }
+  .subtle-border { border-color: rgba(255,255,255,0.06); }
+  .input { background: #0a0d16; border-color: rgba(255,255,255,0.08); color: #eceef2; }
+  .topbar-bg { background: rgba(10,13,22,0.7); backdrop-filter: blur(12px); border-color: rgba(255,255,255,0.06); }
+  .sidebar-bg { background: #0e1320; border-color: rgba(255,255,255,0.06); }
+  .nav-item-active { background: rgba(6,182,212,0.12); color: #67e8f9; }
+  .nav-item-idle:hover { background: rgba(255,255,255,0.04); }
+  /* Number ticker */
+  .count-up { display: inline-block; }
+</style>
+</head>
+<body class="antialiased">
+  <template id="__bundler_thumbnail" data-bg-color="#0a0d16">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#22d3ee" />
+          <stop offset="100%" stop-color="#8b5cf6" />
+        </linearGradient>
+      </defs>
+      <rect x="360" y="200" width="480" height="400" rx="72" fill="url(#g)" />
+      <path d="M 480 460 L 480 360 L 720 360 L 720 460 L 660 460 L 600 520 L 540 460 Z" fill="#0a0d16" />
+      <circle cx="540" cy="410" r="14" fill="#22d3ee" />
+      <circle cx="600" cy="410" r="14" fill="#22d3ee" />
+      <circle cx="660" cy="410" r="14" fill="#22d3ee" />
+      <text x="600" y="700" text-anchor="middle" fill="#eceef2" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="56" letter-spacing="2">CobrAI</text>
+    </svg>
+  </template>
+  <div id="root"></div>
+
+  <script type="text/babel" src="js/data.jsx"></script>
+  <script type="text/babel" src="js/ui.jsx"></script>
+  <script type="text/babel" src="js/screens-1.jsx"></script>
+  <script type="text/babel" src="js/screens-2.jsx"></script>
+  <script type="text/babel" src="js/screens-3.jsx"></script>
+  <script type="text/babel" src="js/app.jsx"></script>
+</body>
+</html>
