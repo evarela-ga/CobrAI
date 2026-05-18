@@ -70,6 +70,7 @@ function RouterOutlet({ state, goto, openConv }) {
     case 'templates': return <TemplatesScreen />;
     case 'inbox': return <InboxScreen initialId={state.routeParams.id || state.activeConversationId} />;
     case 'debtor': return <DebtorScreen id={state.routeParams.id} goto={goto} openConv={openConv} />;
+    case 'debtors': return <DebtorsListScreen goto={goto} />;
     case 'dashboard-mgmt': return <DashboardMgmt />;
     case 'settings': return <SettingsScreen />;
     default: return <DashboardOp goto={goto} openConv={openConv} />;
@@ -80,7 +81,7 @@ const NAV = [
   { group: 'Operación', items: [
     { id: 'dashboard-op', icon: 'layout-dashboard', label: 'Dashboard operador' },
     { id: 'inbox', icon: 'inbox', label: 'Bandeja', badge: 22 },
-    { id: 'debtor', icon: 'user-round-search', label: 'Deudores' },
+    { id: 'debtors', icon: 'user-round-search', label: 'Deudores' },
   ]},
   { group: 'Cartera', items: [
     { id: 'portfolio', icon: 'upload-cloud', label: 'Carga de cartera' },
@@ -113,11 +114,11 @@ function Sidebar({ route, goto }) {
             <div className="text-[10px] uppercase tracking-widest text-muted px-2.5 mb-1.5">{g.group}</div>
             <div className="space-y-0.5">
               {g.items.map(it => {
-                const active = route === it.id || (it.id === 'debtor' && route === 'debtor');
+                const active = route === it.id || (it.id === 'debtors' && route === 'debtor');
                 return (
                   <button
                     key={it.id}
-                    onClick={() => goto(it.id, it.id === 'debtor' ? { id: window.CobrStore.get().deudores[0].id } : {})}
+                    onClick={() => goto(it.id)}
                     className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors ${active ? 'nav-item-active font-medium' : 'nav-item-idle text-muted hover:text-default'}`}
                   >
                     <Icon name={it.icon} size={16} />
@@ -165,7 +166,8 @@ function Topbar({ state, goto }) {
   const breadcrumb = {
     'dashboard-op': ['Operación', 'Dashboard operador'],
     'inbox': ['Operación', 'Bandeja'],
-    'debtor': ['Operación', 'Ficha de deudor'],
+    'debtors': ['Operación', 'Deudores'],
+    'debtor': ['Operación', 'Deudores', 'Ficha'],
     'portfolio': ['Cartera', 'Carga'],
     'strategies': ['Cartera', 'Estrategias'],
     'templates': ['Cartera', 'Plantillas'],

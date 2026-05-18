@@ -26,8 +26,8 @@ function DebtorScreen({ id, goto, openConv }) {
 
   return (
     <div className="p-6 fade-in" data-screen-label="Ficha de Deudor">
-      <button onClick={() => goto('inbox')} className="text-xs text-muted hover:text-default inline-flex items-center gap-1 mb-3">
-        <Icon name="arrow-left" size={12} /> Volver a la bandeja
+      <button onClick={() => goto('debtors')} className="text-xs text-muted hover:text-default inline-flex items-center gap-1 mb-3">
+        <Icon name="arrow-left" size={12} /> Volver a deudores
       </button>
 
       {/* Header card */}
@@ -802,4 +802,253 @@ function AuditTab() {
   );
 }
 
-Object.assign(window, { DebtorScreen, DashboardMgmt, SettingsScreen });
+Object.assign(window, { DebtorScreen, DashboardMgmt, SettingsScreen, DebtorsListScreen });
+
+// ============ LISTADO DE DEUDORES ============
+function DebtorsListScreen({ goto }) {
+  const state = window.CobrStore.get();
+  const [search, setSearch] = useState3('');
+  const [estadoFilter, setEstadoFilter] = useState3('todos');
+  const [provFilter, setProvFilter] = useState3('todas');
+  const [prioFilter, setPrioFilter] = useState3('todas');
+  const [sortBy, setSortBy] = useState3('voluntad');
+  const [sortDir, setSortDir] = useState3('desc');
+  const [view, setView] = useState3('table'); // 'table' | 'cards'
+  const [page, setPage] = useState3(1);
+  const pageSize = 20;
+  const tenant = window.CobrData.TENANTS.find(t => t.id === state.tenantId);
+
+  const provincias = useMemo3(() => ['todas', ...Array.from(new Set(state.deudores.map(d => d.provincia))).sort()], [state.deudores]);
+
+  const filtered = useMemo3(() => {
+    let list = state.deudores;
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(d => d.nombre.toLowerCase().includes(q) || d.dni.includes(q) || d.phone.includes(q));
+    }
+    if (estadoFilter !== 'todos') list = list.filter(d => d.estado === estadoFilter);
+    if (provFilter !== 'todas') list = list.filter(d => d.provincia === provFilter);
+    if (prioFilter !== 'todas') list = list.filter(d => d.prioridad === prioFilter);
+    list = [...list].sort((a, b) => {
+      const va = a[sortBy], vb = b[sortBy];
+      if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+      return sortDir === 'asc' ? va - vb : vb - va;
+    });
+    return list;
+  }, [state.deudores, search, estadoFilter, provFilter, prioFilter, sortBy, sortDir]);
+
+  useEffect3(() => setPage(1), [search, estadoFilter, provFilter, prioFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  // Aggregates over filtered set
+  const agg = useMemo3(() => ({
+    total: filtered.length,
+    monto: filtered.reduce((a, d) => a + d.monto, 0),
+    promesas: filtered.filter(d => d.estado === 'Promesa de pago').length,
+    enGestion: filtered.filter(d => d.estado === 'En gestión').length,
+    altaVol: filtered.filter(d => d.voluntad >= 70).length,
+    moraProm: filtered.length ? Math.round(filtered.reduce((a, d) => a + d.mora, 0) / filtered.length) : 0,
+  }), [filtered]);
+
+  const headerSort = (col) => {
+    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(col); setSortDir('desc'); }
+  };
+  const SortIcon = ({ col }) => sortBy === col
+    ? <Icon name={sortDir === 'asc' ? 'arrow-up' : 'arrow-down'} size={10} className="text-brand-300 ml-0.5 inline" />
+    : <Icon name="chevrons-up-down" size={10} className="text-muted/50 ml-0.5 inline" />;
+
+  return (
+    <div className="p-6 space-y-5 fade-in" data-screen-label="Deudores">
+      <div className="flex items-end justify-between">
+        <div>
+          <div className="text-xs text-muted">{tenant.name} · Cartera completa</div>
+          <h1 className="text-2xl font-bold tracking-tight">Deudores</h1>
+          <div className="text-sm text-muted mt-0.5">{state.deudores.length} cuentas en gestión · clic en cualquier fila para abrir la ficha completa.</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Btn variant="secondary" icon="download" onClick={() => window.toast({ kind: 'success', title: 'Exportando…', message: `${filtered.length} registros en CSV` })}>Exportar</Btn>
+          <Btn icon="zap" onClick={() => goto('strategies')}>Aplicar estrategia a {filtered.length}</Btn>
+        </div>
+      </div>
+
+      {/* Aggregate strip */}
+      <div className="grid grid-cols-6 gap-3">
+        {[
+          { k: 'Resultados', v: agg.total, fmt: window.fmtInt, icon: 'users', color: 'text-brand-300' },
+          { k: 'Monto filtrado', v: agg.monto, fmt: window.fmtMoneyShort, icon: 'wallet', color: 'text-brand-300' },
+          { k: 'Voluntad alta', v: agg.altaVol, fmt: window.fmtInt, icon: 'flame', color: 'text-emerald-400' },
+          { k: 'En gestión', v: agg.enGestion, fmt: window.fmtInt, icon: 'message-circle-more', color: 'text-violet2-400' },
+          { k: 'Promesas', v: agg.promesas, fmt: window.fmtInt, icon: 'handshake', color: 'text-amber-400' },
+          { k: 'Mora promedio', v: agg.moraProm, fmt: v => Math.round(v) + 'd', icon: 'clock', color: 'text-coral-400' },
+        ].map((k, i) => (
+          <Card key={i} className="p-3">
+            <div className="flex items-center justify-between mb-1">
+              <div className={`w-6 h-6 rounded bg-white/5 flex items-center justify-center ${k.color}`}><Icon name={k.icon} size={12} /></div>
+            </div>
+            <div className="text-lg font-bold tabular leading-tight"><CountUp value={k.v} format={k.fmt} /></div>
+            <div className="text-[10px] text-muted mt-0.5 truncate">{k.k}</div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Filters bar */}
+      <Card className="p-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[220px]">
+            <Icon name="search" size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar por nombre, DNI o teléfono…"
+              className="input pl-8 pr-2 py-2 rounded-md border text-sm w-full"
+            />
+          </div>
+          <select value={estadoFilter} onChange={e => setEstadoFilter(e.target.value)} className="input px-2 py-2 rounded-md border text-xs">
+            <option value="todos">Todos los estados</option>
+            {window.CobrData.ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
+          </select>
+          <select value={provFilter} onChange={e => setProvFilter(e.target.value)} className="input px-2 py-2 rounded-md border text-xs">
+            {provincias.map(p => <option key={p} value={p}>{p === 'todas' ? 'Todas las provincias' : p}</option>)}
+          </select>
+          <select value={prioFilter} onChange={e => setPrioFilter(e.target.value)} className="input px-2 py-2 rounded-md border text-xs">
+            <option value="todas">Toda prioridad</option>
+            <option value="Alta">Prioridad alta</option>
+            <option value="Media">Prioridad media</option>
+            <option value="Baja">Prioridad baja</option>
+          </select>
+          <div className="h-6 w-px bg-white/10" />
+          <div className="flex items-center gap-1 panel-muted border subtle-border rounded-md p-0.5">
+            <button onClick={() => setView('table')} title="Tabla" className={`p-1.5 rounded transition-colors ${view === 'table' ? 'bg-brand-500/15 text-brand-300' : 'text-muted hover:text-default'}`}><Icon name="list" size={14} /></button>
+            <button onClick={() => setView('cards')} title="Tarjetas" className={`p-1.5 rounded transition-colors ${view === 'cards' ? 'bg-brand-500/15 text-brand-300' : 'text-muted hover:text-default'}`}><Icon name="layout-grid" size={14} /></button>
+          </div>
+          {(search || estadoFilter !== 'todos' || provFilter !== 'todas' || prioFilter !== 'todas') && (
+            <Btn variant="ghost" size="sm" icon="x" onClick={() => { setSearch(''); setEstadoFilter('todos'); setProvFilter('todas'); setPrioFilter('todas'); }}>Limpiar</Btn>
+          )}
+        </div>
+      </Card>
+
+      {/* Results */}
+      {view === 'table' && (
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-muted bg-white/[0.02]">
+                  <th onClick={() => headerSort('nombre')} className="font-medium px-4 py-2.5 cursor-pointer select-none hover:text-default">Deudor <SortIcon col="nombre" /></th>
+                  <th onClick={() => headerSort('monto')} className="font-medium px-2 py-2.5 text-right cursor-pointer select-none hover:text-default">Monto <SortIcon col="monto" /></th>
+                  <th onClick={() => headerSort('mora')} className="font-medium px-2 py-2.5 text-right cursor-pointer select-none hover:text-default">Mora <SortIcon col="mora" /></th>
+                  <th onClick={() => headerSort('voluntad')} className="font-medium px-2 py-2.5 cursor-pointer select-none hover:text-default">Voluntad <SortIcon col="voluntad" /></th>
+                  <th onClick={() => headerSort('score')} className="font-medium px-2 py-2.5 text-right cursor-pointer select-none hover:text-default">Score <SortIcon col="score" /></th>
+                  <th onClick={() => headerSort('provincia')} className="font-medium px-2 py-2.5 cursor-pointer select-none hover:text-default">Provincia <SortIcon col="provincia" /></th>
+                  <th onClick={() => headerSort('estado')} className="font-medium px-2 py-2.5 cursor-pointer select-none hover:text-default">Estado <SortIcon col="estado" /></th>
+                  <th className="font-medium px-2 py-2.5">Asignado</th>
+                  <th onClick={() => headerSort('ultimoContactoHs')} className="font-medium px-2 py-2.5 cursor-pointer select-none hover:text-default">Últ. contacto <SortIcon col="ultimoContactoHs" /></th>
+                  <th className="font-medium px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((d) => (
+                  <tr key={d.id} className="border-t subtle-border hover:bg-white/[0.03] cursor-pointer transition-colors group" onClick={() => goto('debtor', { id: d.id })}>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar initials={d.nombre.split(' ').map(n => n[0]).slice(0, 2).join('')} size={28} color={`hsl(${(d.nombre.charCodeAt(0) * 13) % 360}, 50%, 50%)`} />
+                        <div className="min-w-0">
+                          <div className="font-medium text-default truncate">{d.nombre}</div>
+                          <div className="text-[11px] text-muted tabular">DNI {d.dni}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2.5 text-right tabular">{window.fmtMoney(d.monto)}</td>
+                    <td className="px-2 py-2.5 text-right tabular text-muted">{d.mora}d</td>
+                    <td className="px-2 py-2.5"><VolBadge voluntad={d.voluntad} /></td>
+                    <td className={`px-2 py-2.5 text-right tabular font-medium ${d.score >= 700 ? 'text-emerald-400' : d.score >= 500 ? 'text-amber-400' : 'text-coral-400'}`}>{d.score}</td>
+                    <td className="px-2 py-2.5 text-muted text-xs">{d.provincia}</td>
+                    <td className="px-2 py-2.5"><EstadoBadge estado={d.estado} /></td>
+                    <td className="px-2 py-2.5 text-xs">
+                      {d.asignado === '—'
+                        ? <span className="text-muted">—</span>
+                        : <span className="inline-flex items-center gap-1.5"><Avatar initials={d.asignado.split(' ').map(n => n[0]).join('')} size={18} color="#525a6f" />{d.asignado}</span>}
+                    </td>
+                    <td className="px-2 py-2.5 text-xs text-muted">hace {d.ultimoContactoHs < 60 ? d.ultimoContactoHs + 'm' : Math.floor(d.ultimoContactoHs / 24) + 'd'}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <IconBtn icon="message-square" title="Abrir conversación" onClick={(e) => { e.stopPropagation(); window.CobrStore.set({ route: 'inbox', activeConversationId: d.id, routeParams: { id: d.id } }); }} />
+                        <IconBtn icon="arrow-right" title="Ver ficha" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {pageRows.length === 0 && (
+                  <tr><td colSpan="10"><EmptyState icon="user-round-search" title="Sin deudores que coincidan" hint="Probá ajustar o limpiar los filtros." action={<Btn size="sm" variant="secondary" onClick={() => { setSearch(''); setEstadoFilter('todos'); setProvFilter('todas'); setPrioFilter('todas'); }}>Limpiar filtros</Btn>} /></td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {filtered.length > pageSize && (
+            <div className="flex items-center justify-between p-3 border-t subtle-border text-xs">
+              <span className="text-muted tabular">Mostrando {((page - 1) * pageSize) + 1}–{Math.min(page * pageSize, filtered.length)} de {filtered.length}</span>
+              <div className="flex items-center gap-1">
+                <IconBtn icon="chevrons-left" title="Primera" onClick={() => setPage(1)} />
+                <IconBtn icon="chevron-left" title="Anterior" onClick={() => setPage(p => Math.max(1, p - 1))} />
+                <span className="text-muted px-2 tabular">página <b className="text-default">{page}</b> de {totalPages}</span>
+                <IconBtn icon="chevron-right" title="Siguiente" onClick={() => setPage(p => Math.min(totalPages, p + 1))} />
+                <IconBtn icon="chevrons-right" title="Última" onClick={() => setPage(totalPages)} />
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {view === 'cards' && (
+        <>
+          <div className="grid grid-cols-4 gap-3">
+            {pageRows.map(d => (
+              <Card key={d.id} className="p-4 hover:border-brand-500/40 hover:shadow-glow transition-all cursor-pointer" onClick={() => goto('debtor', { id: d.id })}>
+                <div className="flex items-start gap-2.5 mb-3">
+                  <Avatar initials={d.nombre.split(' ').map(n => n[0]).slice(0, 2).join('')} size={40} color={`hsl(${(d.nombre.charCodeAt(0) * 13) % 360}, 50%, 50%)`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate">{d.nombre}</div>
+                    <div className="text-[11px] text-muted tabular">DNI {d.dni}</div>
+                  </div>
+                  <EstadoBadge estado={d.estado} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 mb-3">
+                  <div className="rounded panel-muted border subtle-border px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-wide text-muted">Deuda</div>
+                    <div className="text-sm font-semibold tabular">{window.fmtMoneyShort(d.monto)}</div>
+                  </div>
+                  <div className="rounded panel-muted border subtle-border px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-wide text-muted">Mora</div>
+                    <div className="text-sm font-semibold tabular">{d.mora}d</div>
+                  </div>
+                  <div className="rounded panel-muted border subtle-border px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-wide text-muted">Voluntad</div>
+                    <div className="text-sm font-semibold tabular">{d.voluntad}</div>
+                  </div>
+                  <div className="rounded panel-muted border subtle-border px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-wide text-muted">Score</div>
+                    <div className={`text-sm font-semibold tabular ${d.score >= 700 ? 'text-emerald-400' : d.score >= 500 ? 'text-amber-400' : 'text-coral-400'}`}>{d.score}</div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-muted">
+                  <span className="inline-flex items-center gap-1"><Icon name="map-pin" size={10} />{d.provincia}</span>
+                  <span>hace {d.ultimoContactoHs < 60 ? d.ultimoContactoHs + 'm' : Math.floor(d.ultimoContactoHs / 24) + 'd'}</span>
+                </div>
+              </Card>
+            ))}
+          </div>
+          {filtered.length > pageSize && (
+            <div className="flex items-center justify-center gap-2 text-xs">
+              <IconBtn icon="chevron-left" title="Anterior" onClick={() => setPage(p => Math.max(1, p - 1))} />
+              <span className="text-muted px-2 tabular">página <b className="text-default">{page}</b> de {totalPages}</span>
+              <IconBtn icon="chevron-right" title="Siguiente" onClick={() => setPage(p => Math.min(totalPages, p + 1))} />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

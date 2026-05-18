@@ -166,6 +166,9 @@ function DashboardOp({ goto, openConv }) {
         </div>
       </div>
 
+      {/* AI Prompt — Asistente del operador */}
+      <OperatorAIPrompt />
+
       {/* KPIs */}
       <div className="grid grid-cols-6 gap-3">
         {kpis.map((k, i) => (
@@ -646,6 +649,258 @@ function UploadHistory() {
         </tbody>
       </table>
     </Card>
+  );
+}
+
+// ============ OPERATOR AI PROMPT ============
+const OPERATOR_FAQS = [
+  { icon: 'message-square-quote', label: '¿Cómo respondo a alguien que dice "no tengo plata"?', cat: 'Objeciones' },
+  { icon: 'message-square-quote', label: '¿Qué digo si me piden quita mayor al 30%?', cat: 'Objeciones' },
+  { icon: 'message-square-quote', label: '¿Cómo manejo a un deudor agresivo o insultante?', cat: 'Objeciones' },
+  { icon: 'message-square-quote', label: '¿Qué hacer cuando dicen "no soy yo, debe ser un error"?', cat: 'Objeciones' },
+  { icon: 'handshake', label: 'Armame un plan de cuotas para el caso prioritario #1', cat: 'Negociación' },
+  { icon: 'handshake', label: '¿Cuándo conviene ofrecer quita por pago contado?', cat: 'Negociación' },
+  { icon: 'handshake', label: '¿Hasta qué porcentaje de quita puedo autorizar sin supervisor?', cat: 'Negociación' },
+  { icon: 'scale', label: '¿Qué dice la Ley de Defensa del Consumidor sobre el horario de contacto?', cat: 'Legal' },
+  { icon: 'scale', label: '¿Cuándo paso un caso a etapa pre-judicial?', cat: 'Legal' },
+  { icon: 'scale', label: '¿Qué información NO puedo pedirle a un deudor por WhatsApp?', cat: 'Legal' },
+  { icon: 'target', label: '¿A qué casos debería priorizar ahora mismo?', cat: 'Estrategia' },
+  { icon: 'target', label: '¿Qué horario es mejor para mandar el segundo recordatorio?', cat: 'Estrategia' },
+  { icon: 'target', label: 'Sugerime una plantilla para reactivar silenciosos de +90d', cat: 'Estrategia' },
+  { icon: 'sparkles', label: 'Resumime mi día: pendientes, alertas, próximos pasos', cat: 'Productividad' },
+  { icon: 'sparkles', label: '¿Qué cambios de estado hice esta semana?', cat: 'Productividad' },
+];
+
+const OPERATOR_AI_FALLBACKS = {
+  'no tengo plata': `Esta es una de las objeciones más frecuentes. Tres caminos que funcionan bien:\n\n1. **Validar primero** ("entiendo, este mes está difícil para todos"). Sin esto, todo lo que digas suena a presión.\n2. **Explorar la situación real** — preguntar cuándo cobra, si tiene ingresos parciales, si puede algo simbólico ahora. La mayoría puede algo, solo no todo.\n3. **Proponer 2 caminos concretos**: pago parcial inmediato + saldo a 30d, o plan en 3-4 cuotas arrancando en su fecha de cobro.\n\nEvitá: amenazas, "vas a entrar a BCRA", y seguir insistiendo con el monto total. El objetivo de esa conversación es conseguir un compromiso pequeño, no cobrar todo.`,
+  'quita': `Como referencia general en cobranzas argentinas: quitas de 10-15% son habituales para cierre rápido (pago en 48-72h), 20-25% para casos con mora >90d, y 30%+ requiere autorización de supervisor. Antes de ofrecer cualquier quita, asegurate de que es la última jugada: si la ofrecés temprano, perdés margen para escalar después. Siempre condicioná la quita a un pago contado y con fecha concreta — "si pagás hoy, te hago X%". Una quita ofrecida "abierta" termina siendo una expectativa permanente.`,
+  'agresivo': `Tres reglas para deudores hostiles:\n\n1. **Nunca respondas en el mismo tono.** Lo único que buscan es que vos pierdas la compostura para terminar la conversación.\n2. **Bajá la temperatura por escrito**: "entiendo tu malestar, mi intención es ayudarte a resolver esto, no generarte más problemas".\n3. **Tres opciones**: si insulta, dejá registro y derivá a supervisor; si solo está enojado pero negocia, seguí; si la conversación no avanza después de 2 mensajes, cerrá amablemente y pasá a recordatorio automatizado en 7 días.\n\nGuardá siempre los mensajes ofensivos — son evidencia ante reclamos en Defensa del Consumidor.`,
+  'horario': `En Argentina, las **mejores ventanas de respuesta** según el heatmap del dashboard son martes-jueves 19-21hs y sábados 12-14hs. La Ley 25.326 y disposiciones de Defensa del Consumidor no fijan horarios exactos para WhatsApp pero la jurisprudencia tomó como aceptable de **8 a 21hs días hábiles y 9 a 20hs los sábados**. Domingos y feriados, mejor evitar. Fuera de esos horarios, podés programar el mensaje desde la plantilla — el agente lo dispara automáticamente en la mejor ventana.`,
+  'plan': `Para un plan de cuotas estándar te recomiendo seguir esta estructura: primera cuota dentro de los 5-7 días (compromiso inmediato), cuotas mensuales en su fecha habitual de cobro (no genérica), sin interés si la mora es < 60d, con interés del 2-3% mensual si es mayor. **3-4 cuotas es el sweet spot** — más corto y rechazan, más largo y la tasa de incumplimiento sube fuerte. Importante: documentá el plan por escrito en el chat, mandale el detalle completo (cuotas, montos, fechas, link), y registrá la promesa de pago en la ficha del deudor para que el sistema haga el seguimiento automático.`,
+  'priorizar': `Mirá el dashboard ahora mismo: la tabla "Casos prioritarios hoy" ya está rankeada por probabilidad de cobro. Mi consejo es atacar primero los casos con **voluntad ≥70 y mora 30-90d** — son los que te dan mejor recupero por minuto invertido. Después, los que tienen promesa de pago vencida hoy o mañana (3 casos). Por último, los de alto monto con voluntad media — esos son negociaciones largas pero el ticket justifica el tiempo. **Evitá hoy**: silenciosos con +120d sin respuesta. Esos van mejor con automatización masiva, no con tu tiempo.`,
+};
+
+function localAIAnswer(prompt) {
+  const p = prompt.toLowerCase();
+  for (const [k, v] of Object.entries(OPERATOR_AI_FALLBACKS)) {
+    if (p.includes(k)) return v;
+  }
+  return `Buena pregunta. Sin acceso al modelo en este momento te dejo el marco general: en cobranzas por WhatsApp, lo que mejor funciona es **escuchar primero, proponer después**. Para casi cualquier situación con un deudor, la secuencia es: validar emocionalmente → preguntar para entender → proponer 2 caminos concretos → cerrar con un compromiso pequeño y con fecha.\n\nProbá ser más específica con tu consulta — por ejemplo, contame qué dijo el deudor, qué mora tiene, y qué intentaste hasta ahora. Con eso te puedo dar una respuesta accionable.`;
+}
+
+function OperatorAIPrompt() {
+  const [prompt, setPrompt] = useState1('');
+  const [loading, setLoading] = useState1(false);
+  const [answer, setAnswer] = useState1(null);
+  const [history, setHistory] = useState1([]);
+  const [activeCat, setActiveCat] = useState1('Todas');
+  const inputRef = useRef1(null);
+
+  const categories = ['Todas', ...Array.from(new Set(OPERATOR_FAQS.map(f => f.cat)))];
+  const filtered = activeCat === 'Todas' ? OPERATOR_FAQS : OPERATOR_FAQS.filter(f => f.cat === activeCat);
+
+  const send = async (text) => {
+    const q = (text || prompt).trim();
+    if (!q || loading) return;
+    setPrompt('');
+    setLoading(true);
+    setAnswer({ q, a: null });
+    let result;
+    try {
+      const sysPrompt = `Sos el asistente de IA de CobrAI, una plataforma de cobranzas por WhatsApp en Argentina. Le hablás a una operadora humana llamada Mariana que está gestionando una cartera morosa. Respondé en español rioplatense, tono profesional pero cercano, en menos de 180 palabras, con bullets o pasos numerados cuando aplique. Cuando la pregunta sea sobre objeciones, dale frases concretas que pueda copiar y mandar. Si menciona temas legales argentinos, sé prudente y aclará que conviene confirmar con el equipo legal del tenant. Pregunta de la operadora:\n\n${q}`;
+      result = await Promise.race([
+        window.claude.complete(sysPrompt),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000)),
+      ]);
+    } catch (e) {
+      result = localAIAnswer(q);
+    }
+    setAnswer({ q, a: result });
+    setHistory(h => [{ q, a: result, ts: Date.now() }, ...h].slice(0, 5));
+    setLoading(false);
+  };
+
+  return (
+    <Card className="p-0 overflow-hidden border-brand-500/30" style={{ background: 'linear-gradient(135deg, rgba(6,182,212,0.06), rgba(139,92,246,0.04) 60%, transparent)' }}>
+      <div className="flex items-stretch">
+        {/* Left: prompt area */}
+        <div className="flex-1 p-4 min-w-0">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-violet2-500 flex items-center justify-center shadow-glow">
+              <Icon name="sparkles" size={16} className="text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold text-sm flex items-center gap-2">
+                Asistente CobrAI
+                <Badge tone="brand" className="!text-[9px]">beta</Badge>
+              </div>
+              <div className="text-[11px] text-muted">Preguntale lo que necesites: objeciones, plantillas, normativa, estrategia.</div>
+            </div>
+            {history.length > 0 && (
+              <button onClick={() => { setHistory([]); setAnswer(null); }} className="text-[11px] text-muted hover:text-default inline-flex items-center gap-1">
+                <Icon name="rotate-ccw" size={11} /> Reiniciar
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 panel-muted border subtle-border rounded-lg pl-3 pr-1.5 py-1.5 focus-within:ring-2 focus-within:ring-brand-500/40 transition-all">
+            <Icon name="message-square-text" size={14} className="text-brand-300 shrink-0" />
+            <input
+              ref={inputRef}
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+              placeholder="Ej: ¿cómo negociar con un deudor que dice que no tiene plata?"
+              className="flex-1 bg-transparent border-0 outline-0 text-sm placeholder:text-muted min-w-0"
+              disabled={loading}
+            />
+            <kbd className="hidden md:inline font-mono text-[10px] panel border subtle-border rounded px-1.5 py-0.5 text-muted">↵</kbd>
+            <Btn size="sm" icon={loading ? 'loader' : 'send'} onClick={() => send()} disabled={loading || !prompt.trim()}>
+              {loading ? 'Pensando…' : 'Preguntar'}
+            </Btn>
+          </div>
+
+          {/* FAQ chips */}
+          {!answer && (
+            <div className="mt-3">
+              <div className="flex items-center gap-1 mb-2 flex-wrap">
+                <span className="text-[10px] uppercase tracking-wider text-muted mr-1">Preguntas frecuentes</span>
+                {categories.map(c => (
+                  <button key={c} onClick={() => setActiveCat(c)} className={`text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors ${activeCat === c ? 'bg-brand-500/15 text-brand-300' : 'text-muted hover:bg-white/5 hover:text-default'}`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {filtered.slice(0, 8).map((f, i) => (
+                  <button
+                    key={i}
+                    onClick={() => send(f.label)}
+                    className="chip-anim inline-flex items-center gap-1.5 panel-muted border subtle-border rounded-full px-2.5 py-1 text-[11px] hover:bg-brand-500/10 hover:border-brand-500/40 hover:text-brand-300 transition-all text-left"
+                  >
+                    <Icon name={f.icon} size={11} className="text-muted shrink-0" />
+                    <span>{f.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Answer */}
+          {answer && (
+            <div className="mt-3 space-y-2 slide-in">
+              <div className="flex items-start gap-2">
+                <Avatar initials="MR" size={22} color="#06b6d4" />
+                <div className="flex-1 panel-muted border subtle-border rounded-lg rounded-tl-sm px-3 py-2 text-sm">{answer.q}</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-[22px] h-[22px] rounded-full bg-gradient-to-br from-brand-400 to-violet2-500 flex items-center justify-center shrink-0">
+                  <Icon name="sparkles" size={11} className="text-white" />
+                </div>
+                <div className="flex-1 panel border border-brand-500/20 rounded-lg rounded-tl-sm px-3 py-2.5 text-sm leading-relaxed">
+                  {answer.a == null ? (
+                    <div className="flex items-center gap-2 text-muted">
+                      <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+                      <span className="text-xs ml-2">El asistente está pensando…</span>
+                    </div>
+                  ) : (
+                    <AnswerBody text={answer.a} />
+                  )}
+                  {answer.a != null && (
+                    <div className="flex items-center justify-between mt-3 pt-2 border-t subtle-border">
+                      <div className="flex items-center gap-1 text-[10px] text-muted">
+                        <Icon name="info" size={10} /> Las recomendaciones son sugerencias; usá tu criterio profesional.
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <IconBtn icon="copy" title="Copiar" size={12} onClick={() => { navigator.clipboard?.writeText(answer.a); window.toast({ kind: 'success', title: 'Copiado al portapapeles' }); }} />
+                        <IconBtn icon="thumbs-up" title="Útil" size={12} onClick={() => window.toast({ kind: 'success', title: '¡Gracias por el feedback!' })} />
+                        <IconBtn icon="thumbs-down" title="Mejorable" size={12} onClick={() => window.toast({ kind: 'info', title: 'Anotado, vamos a mejorar' })} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => { setAnswer(null); inputRef.current?.focus(); }} className="text-[11px] text-brand-300 hover:underline inline-flex items-center gap-1">
+                <Icon name="plus" size={11} /> Nueva pregunta
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right: suggestions */}
+        <div className="hidden xl:flex w-72 shrink-0 flex-col border-l subtle-border panel-muted/50">
+          <div className="p-3 border-b subtle-border">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-default">
+              <Icon name="zap" size={12} className="text-amber-400" /> Sugerencias para vos
+            </div>
+            <div className="text-[10px] text-muted mt-0.5">Basadas en tu actividad</div>
+          </div>
+          <div className="flex-1 p-2 space-y-1 overflow-y-auto scrollbar-thin max-h-[260px]">
+            {[
+              { icon: 'flame', tone: 'text-coral-400', txt: 'Tenés 3 promesas que vencen hoy sin confirmar.', q: '¿Cómo hago seguimiento a 3 promesas que vencen hoy?' },
+              { icon: 'alert-triangle', tone: 'text-amber-400', txt: 'Brenda Salinas no respondió hace 36hs — alta voluntad.', q: '¿Cómo reactivo a Brenda Salinas que era voluntad alta y no responde hace 36hs?' },
+              { icon: 'trending-up', tone: 'text-emerald-400', txt: 'La plantilla "Quita por pago contado" convierte 41%.', q: '¿Vale la pena usar la plantilla "Quita por pago contado" en mora 30-60d?' },
+              { icon: 'sparkles', tone: 'text-violet2-400', txt: 'Generá un resumen de tu turno para pasar a Diego.', q: 'Armame un resumen de mi turno para entregarle a Diego' },
+            ].map((s, i) => (
+              <button key={i} onClick={() => send(s.q)} className="w-full text-left p-2 rounded-md hover:bg-white/[0.04] transition-colors flex items-start gap-2 group">
+                <Icon name={s.icon} size={12} className={`${s.tone} mt-0.5 shrink-0`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-default leading-snug">{s.txt}</div>
+                  <div className="text-[10px] text-brand-300 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1">
+                    Preguntarle al asistente <Icon name="arrow-right" size={9} />
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+          {history.length > 0 && (
+            <div className="border-t subtle-border p-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted px-1 mb-1">Historial reciente</div>
+              <div className="space-y-0.5 max-h-24 overflow-y-auto scrollbar-thin">
+                {history.map((h, i) => (
+                  <button key={i} onClick={() => setAnswer({ q: h.q, a: h.a })} className="w-full text-left p-1.5 rounded hover:bg-white/5 text-[11px] text-muted hover:text-default truncate flex items-center gap-1.5">
+                    <Icon name="history" size={10} className="shrink-0" />
+                    <span className="truncate">{h.q}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function AnswerBody({ text }) {
+  // Lightweight markdown: paragraphs, **bold**, numbered + bullet lists
+  const parseInline = (s) => s.split(/(\*\*[^*]+\*\*)/g).map((seg, i) =>
+    seg.startsWith('**') ? <b key={i} className="text-default">{seg.slice(2, -2)}</b> : <span key={i}>{seg}</span>
+  );
+  const blocks = text.split(/\n\n+/);
+  return (
+    <div className="space-y-2 text-default">
+      {blocks.map((b, i) => {
+        const lines = b.split('\n');
+        const isNumList = lines.every(l => /^\d+\.\s/.test(l));
+        const isBulList = lines.every(l => /^[-•]\s/.test(l));
+        if (isNumList) {
+          return (
+            <ol key={i} className="space-y-1 ml-1">
+              {lines.map((l, j) => <li key={j} className="flex gap-2"><span className="text-brand-300 font-semibold tabular shrink-0">{l.match(/^\d+/)[0]}.</span><span>{parseInline(l.replace(/^\d+\.\s/, ''))}</span></li>)}
+            </ol>
+          );
+        }
+        if (isBulList) {
+          return (
+            <ul key={i} className="space-y-1 ml-1">
+              {lines.map((l, j) => <li key={j} className="flex gap-2"><span className="text-brand-300 mt-0.5 shrink-0">•</span><span>{parseInline(l.replace(/^[-•]\s/, ''))}</span></li>)}
+            </ul>
+          );
+        }
+        return <p key={i}>{parseInline(b)}</p>;
+      })}
+    </div>
   );
 }
 
