@@ -1,5 +1,5 @@
 // Screens part 3: Ficha de Deudor, Dashboard Gerencial, Settings
-const { useState: useState3, useEffect: useEffect3, useMemo: useMemo3 } = React;
+const { useState: useState3, useEffect: useEffect3, useMemo: useMemo3, useRef: useRef3 } = React;
 
 // ============ FICHA DE DEUDOR ============
 function DebtorScreen({ id, goto, openConv }) {
@@ -337,6 +337,9 @@ function DashboardMgmt() {
           ))}
         </div>
       </div>
+
+      {/* AI module for management */}
+      <MgmtAIModule kpis={kpis} tenant={tenant} state={state} />
 
       {/* KPIs */}
       <div className="grid grid-cols-8 gap-3">
@@ -803,6 +806,243 @@ function AuditTab() {
 }
 
 Object.assign(window, { DebtorScreen, DashboardMgmt, SettingsScreen, DebtorsListScreen });
+
+// ============ MGMT AI MODULE ============
+const MGMT_PROMPTS = [
+  { icon: 'trending-up', cat: 'Performance', label: '¿Cómo está rindiendo la cartera vs el mes pasado?' },
+  { icon: 'trending-up', cat: 'Performance', label: '¿Qué cluster de deudores está pagando peor este trimestre?' },
+  { icon: 'trending-up', cat: 'Performance', label: 'Mostrame los 3 problemas más urgentes que ve la IA hoy' },
+  { icon: 'target', cat: 'Estrategia', label: '¿Qué estrategia conviene escalar y cuál pausar?' },
+  { icon: 'target', cat: 'Estrategia', label: '¿En qué tramo de mora tengo el mayor recupero por minuto invertido?' },
+  { icon: 'target', cat: 'Estrategia', label: 'Recomendame una reasignación de cartera entre operadores' },
+  { icon: 'users-round', cat: 'Equipo', label: '¿Quiénes son mis 3 mejores operadores y por qué?' },
+  { icon: 'users-round', cat: 'Equipo', label: '¿Hay operadores con baja conversión que necesiten coaching?' },
+  { icon: 'users-round', cat: 'Equipo', label: '¿Cómo distribuyo la carga si entra una nueva tanda de 500 casos?' },
+  { icon: 'trending-up', cat: 'Forecast', label: '¿Qué recupero proyectás para los próximos 90 días?' },
+  { icon: 'trending-up', cat: 'Forecast', label: 'Si subo 10% el headcount, ¿cuánto recupero adicional consigo?' },
+  { icon: 'alert-triangle', cat: 'Riesgo', label: '¿Qué % de mi cartera está en riesgo de pasar a incobrable?' },
+  { icon: 'alert-triangle', cat: 'Riesgo', label: '¿Qué casos debería derivar a estudio jurídico esta semana?' },
+  { icon: 'file-text', cat: 'Reportes', label: 'Armame el resumen ejecutivo para el comité del viernes' },
+  { icon: 'file-text', cat: 'Reportes', label: 'Generá los 3 KPIs que más mejoraron y los 3 que empeoraron' },
+];
+
+const MGMT_AI_FALLBACKS = {
+  'pasado|cartera vs': `La cartera viene mejor que el mes pasado, pero el avance no está parejo:\n\n- **Recupero del mes** subió 24% vs abril, impulsado por la estrategia "Mora temprana 1-30d" que está convirtiendo 42%.\n- **Ticket promedio bajó 3%**, señal de que estás cerrando más casos chicos. Eso es bueno para velocidad pero comprime el margen.\n- **DSO mejoró 4 días** — esto le importa al CFO más de lo que parece, porque libera capital de trabajo.\n- **Atención**: la tasa de incobrabilidad bajó 0.3pp pero el cluster "Esquivos crónicos" creció 12%. Si no lo atacás, en 60 días eso va a empujar la incobrabilidad para arriba.`,
+  'cluster|peor': `Mirando los 5 clusters que detectó la IA, el que más se deterioró este trimestre fue **"Esquivos crónicos"** — 287 casos, $41.2M en juego, y el delta de respuesta cayó 3%. Son deudores con mora >120d, ubicabilidad baja y sin patrón claro de pago. Lo que está fallando: las plantillas estándar no les llegan, y los operadores les dedican tiempo desproporcionado para el resultado. **Sugerencia**: pasar el 70% a una estrategia de automatización masiva con horarios atípicos (sábados 12-14hs muestra mejor respuesta para este perfil), y reservar tu mejor operador para los top 30 por monto. El resto, a recordatorios programados sin intervención humana.`,
+  'urgentes|problemas más': `Los 3 focos rojos del dashboard hoy:\n\n1. **9.8% de la cartera concentrada en Buenos Aires + CABA con mora >90d** ($142.6M). Un solo evento macro puede mover esta cifra fuerte; necesitás diversificar gestión por provincia.\n2. **Brecha entre operadores top y bottom es 3.4x** (Mariana cobra $14.2M, el operador #10 cobra $5.3M). O tenés un problema de asignación o un problema de coaching — los datos sugieren lo primero.\n3. **La estrategia "Recupero alto valor" convierte solo 19%** pero consume 28% del tiempo de operadores senior. Estás dejando recupero sobre la mesa en el tramo 30-90d, que convierte 42%.`,
+  'escalar|pausar': `**Escalar**: la estrategia "Mora temprana 1-30d" convierte 42% con ticket promedio de $184k. Cada peso de inversión en escalarla rinde 1.6x más que las otras. Sugiero duplicar el volumen de mensajes en esta franja y mover 2 operadores junior de "Alto valor" a "Mora temprana".\n\n**Pausar/revisar**: "Reactivación silenciosos" — 11% de cobro, ticket bajo, mucho overhead operativo. Antes de pausarla, probá una variante con plantillas más cortas y horarios atípicos (sábados 12-14hs). Si en 21 días no levanta 5pp, pausala y derivá la cartera a un canal de automatización pura.\n\n**Mantener**: "Mora media — Plan a medida" y "Recupero alto valor" — son las más estables y cubren tramos críticos.`,
+  'mejores operadores': `Tus 3 mejores este período:\n\n1. **Mariana Ríos** — $14.28M cobrado, 187 casos, 38.4% éxito, 2.4d tiempo medio. Score 92. Lo que la distingue: usa plantilla "Quita por pago contado" 3x más que el promedio y cierra el doble de casos en los primeros 5 mensajes.\n2. **Diego Pereyra** — $12.84M, 164 casos, 34.1%. Score 87. Especialista en negociación de planes — su tasa de cumplimiento de promesa es 84% vs 67% del equipo.\n3. **Lucía Fernández** — $11.50M, 152 casos, 31.6%. Score 84. Manejo excelente de casos difíciles (deudores de >180d). \n\n**Insight**: los 3 comparten un patrón — responden a mensajes entrantes en menos de 12 minutos. Operadores con respuesta >30 min cierran 40% menos. Considerá un SLA interno de respuesta.`,
+  'distribuyo|carga|reasignaci': `Con 14 operadores activos y una nueva tanda de 500 casos, sugerencia de reparto basada en mix de perfiles:\n\n- **Top 3 (Mariana, Diego, Lucía)**: 60 casos cada uno de alto valor + voluntad alta. Total 180.\n- **Senior intermedios (Sebastián, Carolina, Federico)**: 50 casos mixtos cada uno. Total 150.\n- **Junior con buena rampa**: 25 casos cada uno solo de mora temprana — su zona de mejor rendimiento. Total 200 entre 8 operadores.\n- **Reservar**: 30 casos sin asignar para reasignación dinámica según primer contacto.\n\nNo le des casos de >120d a operadores junior — quema rampa y los desmoraliza.`,
+  '90 días|proyectás|forecast': `El modelo de forecast proyecta:\n\n- **30 días**: $48.9M recuperado (banda 80-90% confianza: $44.5M — $53.3M).\n- **60 días**: $96.4M acumulado.\n- **90 días**: $141.8M acumulado.\n\nSupuestos clave: headcount estable, mix de estrategias actual, sin shocks macroeconómicos. **Sensibilidades**: si subís 10% el budget en plantillas Meta aprobadas, el modelo proyecta +$4.8M extras. Si bajás el SLA de respuesta a <15 minutos, +$3.2M. Si pasás un 10% del cluster "Esquivos" a judicial directo, +$1.9M pero con costo legal del 15%.`,
+  'headcount|10%': `Subir 10% el headcount significa pasar de 14 a 15-16 operadores. El modelo proyecta:\n\n- **Recupero adicional**: +$9.4M a $11.2M por trimestre (asumiendo rendimiento del operador #8-10 del ranking).\n- **Payback**: ~2.3 meses considerando costo laboral pleno en Argentina ($1.8M/mes total cargado).\n- **Riesgo**: la rampa de un nuevo operador es 60 días en cobranzas; el ROI pleno aparece en mes 3.\n- **Alternativa más rápida**: en lugar de contratar, automatizar el 30% más bajo de la cartera (mora <30d y >$50k) liberaría 25% del tiempo de Mariana y Diego, equivalente a un operador adicional sin costo fijo nuevo.`,
+  'incobrable|riesgo': `Del análisis de la cartera, el **4.8% está clasificado como incobrable** y otro **6.2% en zona de transición** (mora >150d, voluntad <30, sin respuesta en 45+ días). Total en riesgo: 11%, equivalente a $42M.\n\n**Acciones recomendadas**:\n- Pasar los 287 casos del cluster "Esquivos crónicos" a un último intento con plantilla "Aviso pre-judicial" en los próximos 14 días.\n- Los que no respondan: 60% al cluster jurídico (recupero esperado neto 18% post-honorarios), 40% baja contable.\n- El cluster "Sin capacidad de pago" (178 casos, $8.9M) ofrecele una refinanciación larga al 70% del valor original; si no aceptan, baja.`,
+  'jurídico|judicial': `Esta semana, basado en el análisis de mora + voluntad + buró crediticio, son **23 casos** los que justifican derivación a estudio jurídico:\n\n- **8 casos top**: monto >$1M, mora >180d, sin respuesta 60+d. Total $14.8M, recupero esperado neto 32%.\n- **15 casos medianos**: monto $300k-$1M, mora >150d. Total $9.2M, recupero esperado neto 22%.\n\nVan en bloque al estudio Maldonado & Asociados que tiene la mejor tasa histórica. Costo estimado: $4.1M en honorarios. ROI esperado del bloque: 2.7x en 6-9 meses. \n\nIgnorá derivar a judicial casos con monto <$200k — los honorarios y el tiempo absorben todo el recupero.`,
+  'comité|resumen ejecutivo|viernes': `**Resumen ejecutivo — Comité del viernes**\n\n- **Recuperado mes**: $48.7M (+24% vs abril). Récord trimestral.\n- **Recupero %**: 18.4% (+2.1pp). Tendencia sostenida a 4 meses.\n- **Casos cerrados**: 24 nuevos vs período anterior.\n- **DSO**: 47 días (-4d). Libera ~$6M de capital de trabajo.\n- **Win del mes**: estrategia "Mora temprana" superó target de 35% de cobro.\n- **Alerta**: cluster "Esquivos crónicos" +12% en volumen — requiere intervención.\n- **Pedido al comité**: aprobar presupuesto para 1 operador adicional o expandir automatización (ROI proyectado equivalente).`,
+  'mejoraron|empeoraron': `**Top 3 KPIs que mejoraron este mes**:\n\n1. **Recuperado total**: +24% vs mes anterior. Driver: estrategia "Mora temprana" + 2 plantillas nuevas aprobadas.\n2. **DSO**: -4 días. Driver: mejor priorización del top 20% de cartera.\n3. **Tasa de respuesta**: +3pp. Driver: ajuste de horarios al heatmap.\n\n**Top 3 KPIs que empeoraron**:\n\n1. **Ticket promedio**: -3%. Estás cerrando más casos chicos. Neutralizable si subís foco en alto valor.\n2. **Tiempo medio en cluster "Esquivos"**: +18%. Operadores invierten más tiempo con peor resultado.\n3. **% de promesas cumplidas en tramo +90d**: -6pp. Necesita revisión de follow-up automático.`,
+};
+
+function mgmtAIAnswer(prompt) {
+  const p = prompt.toLowerCase();
+  for (const [k, v] of Object.entries(MGMT_AI_FALLBACKS)) {
+    const keys = k.split('|');
+    if (keys.some(kk => p.includes(kk))) return v;
+  }
+  return `Buena pregunta gerencial. Para responder con precisión necesito que me especifiques un poco más el ángulo — ¿estás pensando en performance del equipo, mix de cartera, forecast, riesgo, o ROI de alguna iniciativa puntual?\n\nMientras tanto, dato del dashboard que conviene tener a mano: el **42% del recupero del mes vino del cluster "Negociadores cooperativos"** (524 casos, $56.7M), que solo consume el 28% del tiempo del equipo. Es tu mejor relación rendimiento/esfuerzo y donde tiene sentido seguir invirtiendo si dudás.`;
+}
+
+function MgmtAIModule({ kpis, tenant, state }) {
+  const [prompt, setPrompt] = useState3('');
+  const [loading, setLoading] = useState3(false);
+  const [answer, setAnswer] = useState3(null);
+  const [history, setHistory] = useState3([]);
+  const [activeCat, setActiveCat] = useState3('Todas');
+  const [expanded, setExpanded] = useState3(false);
+  const inputRef = useRef3 ? useRef3(null) : React.useRef(null);
+
+  const categories = ['Todas', ...Array.from(new Set(MGMT_PROMPTS.map(f => f.cat)))];
+  const filtered = activeCat === 'Todas' ? MGMT_PROMPTS : MGMT_PROMPTS.filter(f => f.cat === activeCat);
+
+  const buildContext = () => {
+    const carteraTotal = state.deudores.reduce((a, d) => a + d.monto, 0);
+    const promesas = state.deudores.filter(d => d.estado === 'Promesa de pago').length;
+    return `CONTEXTO (datos en vivo del dashboard de ${tenant.name}):\n- Cartera total: ${window.fmtMoneyShort(carteraTotal)}\n- Recuperado mes: 18.4% ($${(carteraTotal * 0.184 / 1_000_000).toFixed(1)}M)\n- Casos activos: ${state.deudores.length}\n- Promesas de pago: ${promesas}\n- DSO: 47 días\n- Tasa de incobrabilidad: 4.8%\n- Top operadora: Mariana Ríos ($14.28M cobrado)\n- Cluster crítico: "Esquivos crónicos" creció 12%`;
+  };
+
+  const send = async (text) => {
+    const q = (text || prompt).trim();
+    if (!q || loading) return;
+    setPrompt('');
+    setLoading(true);
+    setExpanded(true);
+    setAnswer({ q, a: null });
+    let result;
+    try {
+      const sysPrompt = `Sos el asistente ejecutivo de IA de CobrAI, una plataforma de cobranzas multitenant. Le estás hablando a un gerente de cobranzas en Argentina que está mirando el dashboard gerencial. Respondé en español rioplatense, tono ejecutivo (datos, decisiones, trade-offs, no consejos vagos), en menos de 220 palabras, con bullets o números concretos cuando aplique. Mencioná drivers y riesgos. Cuando recomendes acciones, dale ROI estimado o impacto cuantitativo. No inventes cifras imposibles — usá las del contexto.\n\n${buildContext()}\n\nPregunta del gerente:\n${q}`;
+      result = await Promise.race([
+        window.claude.complete(sysPrompt),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000)),
+      ]);
+    } catch (e) {
+      result = mgmtAIAnswer(q);
+    }
+    setAnswer({ q, a: result });
+    setHistory(h => [{ q, a: result, ts: Date.now() }, ...h].slice(0, 8));
+    setLoading(false);
+  };
+
+  return (
+    <Card className="overflow-hidden border-violet2-500/30" style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.07), rgba(6,182,212,0.04) 60%, transparent)' }}>
+      <div className="flex items-stretch">
+        {/* Left: prompt + answer */}
+        <div className="flex-1 p-4 min-w-0">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet2-500 to-brand-400 flex items-center justify-center shadow-glow">
+              <Icon name="brain-circuit" size={18} className="text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold text-sm flex items-center gap-2">
+                Análisis gerencial con IA
+                <Badge tone="violet" className="!text-[9px]">contexto en vivo</Badge>
+              </div>
+              <div className="text-[11px] text-muted">Preguntá sobre performance, equipo, forecast, riesgo o reportes. La IA ve los datos actuales del workspace.</div>
+            </div>
+            {history.length > 0 && (
+              <button onClick={() => { setHistory([]); setAnswer(null); setExpanded(false); }} className="text-[11px] text-muted hover:text-default inline-flex items-center gap-1">
+                <Icon name="rotate-ccw" size={11} /> Reiniciar
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 panel-muted border subtle-border rounded-lg pl-3 pr-1.5 py-1.5 focus-within:ring-2 focus-within:ring-violet2-500/40 transition-all">
+            <Icon name="sparkles" size={14} className="text-violet2-400 shrink-0" />
+            <input
+              ref={inputRef}
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+              placeholder="Ej: ¿qué estrategia debería escalar este trimestre?"
+              className="flex-1 bg-transparent border-0 outline-0 text-sm placeholder:text-muted min-w-0"
+              disabled={loading}
+            />
+            <kbd className="hidden md:inline font-mono text-[10px] panel border subtle-border rounded px-1.5 py-0.5 text-muted">↵</kbd>
+            <Btn size="sm" icon={loading ? 'loader' : 'send'} onClick={() => send()} disabled={loading || !prompt.trim()} className="!bg-violet2-500 hover:!bg-violet2-400">
+              {loading ? 'Analizando…' : 'Preguntar'}
+            </Btn>
+          </div>
+
+          {/* Predefined prompts */}
+          {!answer && (
+            <div className="mt-3">
+              <div className="flex items-center gap-1 mb-2 flex-wrap">
+                <span className="text-[10px] uppercase tracking-wider text-muted mr-1">Prompts predefinidos</span>
+                {categories.map(c => (
+                  <button key={c} onClick={() => setActiveCat(c)} className={`text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors ${activeCat === c ? 'bg-violet2-500/15 text-violet2-400' : 'text-muted hover:bg-white/5 hover:text-default'}`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {filtered.slice(0, 9).map((f, i) => (
+                  <button
+                    key={i}
+                    onClick={() => send(f.label)}
+                    className="chip-anim inline-flex items-center gap-1.5 panel-muted border subtle-border rounded-full px-2.5 py-1 text-[11px] hover:bg-violet2-500/10 hover:border-violet2-500/40 hover:text-violet2-400 transition-all text-left"
+                  >
+                    <Icon name={f.icon} size={11} className="text-muted shrink-0" />
+                    <span>{f.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Answer */}
+          {answer && (
+            <div className="mt-3 space-y-2 slide-in">
+              <div className="flex items-start gap-2">
+                <Avatar initials="HM" size={22} color="#8b5cf6" />
+                <div className="flex-1 panel-muted border subtle-border rounded-lg rounded-tl-sm px-3 py-2 text-sm">{answer.q}</div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-[22px] h-[22px] rounded-full bg-gradient-to-br from-violet2-500 to-brand-400 flex items-center justify-center shrink-0">
+                  <Icon name="brain-circuit" size={11} className="text-white" />
+                </div>
+                <div className="flex-1 panel border border-violet2-500/20 rounded-lg rounded-tl-sm px-3 py-2.5 text-sm leading-relaxed">
+                  {answer.a == null ? (
+                    <div className="flex items-center gap-2 text-muted">
+                      <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+                      <span className="text-xs ml-2">Analizando datos del workspace…</span>
+                    </div>
+                  ) : (
+                    <AnswerBody text={answer.a} />
+                  )}
+                  {answer.a != null && (
+                    <div className="flex items-center justify-between mt-3 pt-2 border-t subtle-border">
+                      <div className="flex items-center gap-1 text-[10px] text-muted">
+                        <Icon name="database" size={10} /> Análisis basado en {state.deudores.length} cuentas del workspace activo.
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <IconBtn icon="copy" title="Copiar" size={12} onClick={() => { navigator.clipboard?.writeText(answer.a); window.toast({ kind: 'success', title: 'Copiado al portapapeles' }); }} />
+                        <IconBtn icon="file-text" title="Agregar al reporte ejecutivo" size={12} onClick={() => window.toast({ kind: 'success', title: 'Agregado al reporte', message: 'Vas a poder exportarlo desde la sección Reportes.' })} />
+                        <IconBtn icon="thumbs-up" title="Útil" size={12} onClick={() => window.toast({ kind: 'success', title: 'Anotado' })} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => { setAnswer(null); setExpanded(false); inputRef.current?.focus(); }} className="text-[11px] text-violet2-400 hover:underline inline-flex items-center gap-1">
+                <Icon name="plus" size={11} /> Nueva pregunta
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Insights pinned */}
+        <div className="hidden xl:flex w-80 shrink-0 flex-col border-l subtle-border">
+          <div className="p-3 border-b subtle-border">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-default">
+              <Icon name="zap" size={12} className="text-amber-400" /> Insights destacados
+            </div>
+            <div className="text-[10px] text-muted mt-0.5">Detectados por la IA hoy</div>
+          </div>
+          <div className="flex-1 p-2 space-y-1 overflow-y-auto scrollbar-thin max-h-[300px]">
+            {[
+              { tone: 'border-emerald-500/30 bg-emerald-500/5', icon: 'trending-up', iconColor: 'text-emerald-400', tag: 'OPORTUNIDAD', headline: 'Mora temprana convierte 1.6× mejor', txt: 'Considerar mover 2 operadores junior de "Alto valor" a este tramo. Impacto estimado: +$2.4M/mes.', q: '¿Qué estrategia conviene escalar y cuál pausar?' },
+              { tone: 'border-coral-500/30 bg-coral-500/5', icon: 'alert-triangle', iconColor: 'text-coral-400', tag: 'RIESGO', headline: 'Cluster "Esquivos" creció 12%', txt: '287 casos, $41.2M, sin respuesta efectiva con plantillas actuales. Decisión recomendada: re-priorizar en 14 días.', q: '¿Qué cluster de deudores está pagando peor este trimestre?' },
+              { tone: 'border-brand-500/30 bg-brand-500/5', icon: 'users-round', iconColor: 'text-brand-300', tag: 'EQUIPO', headline: 'Brecha 3.4× entre top y bottom', txt: 'Indicador de asignación, no de talento. Una reasignación inteligente podría liberar +$3.1M/mes.', q: 'Recomendame una reasignación de cartera entre operadores' },
+              { tone: 'border-violet2-500/30 bg-violet2-500/5', icon: 'trending-up', iconColor: 'text-violet2-400', tag: 'FORECAST', headline: 'Recupero proyectado 90d: $141.8M', txt: 'Banda 80-90% confianza. Si subís headcount 10%, +$9.4M extra. Payback: 2.3 meses.', q: '¿Qué recupero proyectás para los próximos 90 días?' },
+            ].map((s, i) => (
+              <button key={i} onClick={() => send(s.q)} className={`w-full text-left p-2.5 rounded-lg border ${s.tone} transition-all hover:shadow-card group`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Icon name={s.icon} size={11} className={s.iconColor} />
+                  <span className={`text-[9px] uppercase tracking-wider font-bold ${s.iconColor}`}>{s.tag}</span>
+                </div>
+                <div className="text-[11px] font-semibold text-default leading-snug">{s.headline}</div>
+                <div className="text-[10px] text-muted mt-1 leading-snug">{s.txt}</div>
+                <div className="text-[9px] text-violet2-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1">
+                  Profundizar con IA <Icon name="arrow-right" size={9} />
+                </div>
+              </button>
+            ))}
+          </div>
+          {history.length > 0 && (
+            <div className="border-t subtle-border p-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted px-1 mb-1">Consultas recientes</div>
+              <div className="space-y-0.5 max-h-24 overflow-y-auto scrollbar-thin">
+                {history.map((h, i) => (
+                  <button key={i} onClick={() => setAnswer({ q: h.q, a: h.a })} className="w-full text-left p-1.5 rounded hover:bg-white/5 text-[11px] text-muted hover:text-default truncate flex items-center gap-1.5">
+                    <Icon name="history" size={10} className="shrink-0" />
+                    <span className="truncate">{h.q}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 // ============ LISTADO DE DEUDORES ============
 function DebtorsListScreen({ goto }) {
